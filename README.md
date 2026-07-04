@@ -5,6 +5,14 @@
 ![React](https://img.shields.io/badge/frontend-React%20%2B%20Vite-61DAFB.svg)
 ![Free](https://img.shields.io/badge/cost-%240%20to%20run-brightgreen.svg)
 
+
+
+
+
+https://github.com/user-attachments/assets/e22a3806-3457-4658-8b93-5e34e0221c1f
+
+
+
 A full-stack, **100% free-to-run** multi-agent AI interview system with a
 real voice-driven video-call interview room — not a chat box.
 
@@ -33,6 +41,79 @@ No paid API keys required anywhere in the stack:
 - **Code execution** — Judge0 CE's free public API, no signup
 
 ---
+
+```mermaid
+flowchart TB
+    subgraph Client["🌐 Candidate's Browser"]
+        direction TB
+        Landing["Landing Page<br/>(Navbar · Hero · Features<br/>Demo Simulation · Pricing · Footer)"]
+        Room["Interview Room<br/>(Voice loop · Avatars · PanelRail)"]
+        Coding["Coding Round<br/>(Monaco IDE · Camera · Integrity)"]
+        Results["Results Page<br/>(Score breakdown · PDF export)"]
+
+        MediaRec["MediaRecorder + AnalyserNode<br/>(records answer, detects silence)"]
+        TTS["SpeechSynthesis<br/>(free browser voice, per-agent pitch)"]
+
+        Landing --> Room --> Coding --> Results
+        Room -. records .-> MediaRec
+        Room -. speaks .-> TTS
+    end
+
+    subgraph Backend["⚙️ FastAPI Backend"]
+        direction TB
+        JobsR["/api/jobs"]
+        InterviewR["/api/interview/*"]
+        CodingR["/api/coding/*"]
+        SpeechR["/api/speech/transcribe"]
+
+        subgraph Agents["Agent Layer"]
+            HR["HR Agent<br/>(Kylie Jenner)"]
+            Tech["Technical Agent<br/>(Lisa Chen)"]
+            Lead["Team Lead Agent<br/>(Mark Rodriguez)"]
+            Decision["Decision Agent<br/>(deterministic scoring,<br/>no LLM guess)"]
+        end
+
+        subgraph Services["Service Layer"]
+            LLMClient["openrouter_client<br/>(multi-model + multi-provider<br/>fallback chain)"]
+            WhisperClient["groq_whisper_client"]
+            CodeExec["code_exec_client"]
+            CVParser["cv_parser<br/>(PDF/TXT extraction)"]
+            Problems["coding_problems<br/>(randomized AI/ML bank)"]
+        end
+
+        Storage[("JSON File Storage<br/>backend/storage/*.json")]
+        DataDir[("Data Folder<br/>hr_policies/ · job_descriptions/<br/>candidate_cvs/")]
+
+        InterviewR --> Agents
+        Agents --> LLMClient
+        Decision -.->|"weighted score,<br/>no LLM call"| InterviewR
+        CodingR --> CodeExec
+        CodingR --> Problems
+        SpeechR --> WhisperClient
+        InterviewR --> CVParser
+        InterviewR <--> Storage
+        InterviewR <--> DataDir
+    end
+
+    subgraph External["☁️ Free External APIs"]
+        direction TB
+        OpenRouter["OpenRouter<br/>(gpt-oss-120b, llama-3.3-70b,<br/>auto-router fallback)"]
+        Groq["Groq<br/>(LLM backup + Whisper-large-v3-turbo<br/>separate quota from OpenRouter)"]
+        Judge0["Judge0 CE<br/>(60+ language code execution)"]
+    end
+
+    Client -->|HTTPS / fetch| Backend
+    LLMClient -->|"1st choice"| OpenRouter
+    LLMClient -->|"fallback on<br/>daily-cap/429"| Groq
+    WhisperClient --> Groq
+    CodeExec --> Judge0
+
+    style Client fill:#0b0e14,stroke:#4fd1c5,color:#e6e9ef
+    style Backend fill:#131720,stroke:#4fd1c5,color:#e6e9ef
+    style External fill:#171c27,stroke:#34d399,color:#e6e9ef
+    style Agents fill:#1b212e,stroke:#7fe3d9,color:#e6e9ef
+    style Services fill:#1b212e,stroke:#8b92a5,color:#e6e9ef
+```
 
 ## Demo flow
 
