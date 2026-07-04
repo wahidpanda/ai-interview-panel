@@ -181,7 +181,7 @@ export default function Hero() {
                 <input
                   value={candidateName}
                   onChange={e => setCandidateName(e.target.value)}
-                  placeholder="e.g. Tahmid Rahman"
+                  placeholder="e.g. Sarah Rahman"
                   required
                   style={inputStyle}
                   onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(var(--accent-rgb), 0.15)' }}
