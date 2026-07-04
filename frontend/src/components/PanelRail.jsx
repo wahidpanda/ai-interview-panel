@@ -5,9 +5,11 @@ const STAGES = [
   { id: 'teamlead', label: 'Final Round', name: 'Mark Rodriguez', role: 'Team Lead', glyph: 'F' },
 ]
 
-export default function PanelRail({ currentStage, scores }) {
+export default function PanelRail({ currentStage, scores, compact = false }) {
   const scoreFor = (stageId) => scores?.find(s => s.stage === stageId)?.score
   const currentIndex = STAGES.findIndex(s => s.id === currentStage)
+  const nodeSize = compact ? 30 : 40
+  const gapAfter = compact ? 10 : 28
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -18,14 +20,14 @@ export default function PanelRail({ currentStage, scores }) {
         const isPending = !isDone && !isActive
 
         return (
-          <div key={stage.id} style={{ display: 'flex', gap: 14 }}>
+          <div key={stage.id} style={{ display: 'flex', gap: compact ? 10 : 14 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div
                 className="mono"
                 style={{
-                  width: 40, height: 40, borderRadius: '50%',
+                  width: nodeSize, height: nodeSize, borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 600,
+                  fontSize: compact ? 11 : 13, fontWeight: 600,
                   background: isDone ? 'var(--positive-dim)' : isActive ? 'var(--accent-dim)' : 'var(--surface-alt)',
                   color: isDone ? 'var(--positive)' : isActive ? 'var(--accent)' : 'var(--text-faint)',
                   border: `1.5px solid ${isDone ? 'var(--positive)' : isActive ? 'var(--accent)' : 'var(--border-light)'}`,
@@ -38,19 +40,29 @@ export default function PanelRail({ currentStage, scores }) {
               </div>
               {i < STAGES.length - 1 && (
                 <div style={{
-                  width: 2, flex: 1, minHeight: 28,
+                  width: 2, flex: 1, minHeight: compact ? 14 : 28,
                   background: i < currentIndex ? 'var(--positive)' : 'var(--border)',
                   opacity: i < currentIndex ? 0.6 : 1,
                 }} />
               )}
             </div>
 
-            <div style={{ paddingBottom: 28, opacity: isPending ? 0.5 : 1 }}>
-              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-faint)', marginBottom: 2 }}>
-                {stage.label}
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>{stage.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{stage.role}</div>
+            <div style={{ paddingBottom: gapAfter, opacity: isPending ? 0.5 : 1 }}>
+              {!compact && (
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-faint)', marginBottom: 2 }}>
+                  {stage.label}
+                </div>
+              )}
+              {compact ? (
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+                  {stage.name} <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 400 }}>· {stage.role}</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>{stage.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{stage.role}</div>
+                </>
+              )}
               {isDone && (
                 <div className="mono" style={{ fontSize: 13, color: 'var(--positive)', marginTop: 4, fontWeight: 600 }}>
                   {score.toFixed(1)}/10

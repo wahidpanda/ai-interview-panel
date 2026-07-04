@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import InterviewRoom from './pages/InterviewRoom.jsx'
 import CodingRound from './pages/CodingRound.jsx'
@@ -8,12 +8,16 @@ import { useTheme } from './hooks/useTheme.js'
 
 export default function App() {
   const { theme, toggle } = useTheme()
+  const location = useLocation()
+  const isLanding = location.pathname === '/'
 
   return (
     <>
-      <ThemeToggle theme={theme} onToggle={toggle} />
+      {/* The landing page has its own theme toggle built into the navbar -
+          showing this floating one too would visually overlap it. */}
+      {!isLanding && <ThemeToggle theme={theme} onToggle={toggle} />}
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/" element={<Landing theme={theme} onToggleTheme={toggle} />} />
         <Route path="/interview/:sessionId" element={<InterviewRoom />} />
         <Route path="/interview/:sessionId/coding" element={<CodingRound />} />
         <Route path="/interview/:sessionId/results" element={<Results />} />
