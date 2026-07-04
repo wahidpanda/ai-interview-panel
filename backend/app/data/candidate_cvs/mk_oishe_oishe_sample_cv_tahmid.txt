@@ -1,0 +1,27 @@
+Tahmid Rahman
+AI Engineer
+
+Summary
+-------
+AI/ML engineer with 2 years of experience building NLP systems and
+production chatbots. Passionate about applied AI and retrieval-augmented
+generation systems.
+
+Experience
+----------
+AI Engineer — Nikles (2023–Present)
+- Built and optimized RAG pipelines for a multilingual customer support
+  chatbot serving 5 languages.
+- Used prompt engineering and translation pipelines to handle multilingual
+  inputs/outputs.
+- Partnered with the Project Manager to plan a 3-month roadmap and ran
+  weekly stakeholder feedback loops.
+
+Skills
+------
+Python, PyTorch, LangChain, vector databases, FastAPI, Docker, prompt
+engineering, data structures & algorithms.
+
+Education
+---------
+B.Sc. in Computer Science
