@@ -59,14 +59,14 @@ async def start_interview(
     session = storage.new_session(candidate_name, job_description_id, jd_text, cv_text)
 
     result = await hr_agent.take_turn(candidate_name, jd_text, hr_policy_text, [], None)
-    session["chat"]["hr"].append({"role": "agent", "speaker": AGENT_DISPLAY["hr"], "text": result["reply"]})
+    session["chat"]["hr"].append({"role": "agent", "speaker": AGENT_DISPLAY["hr"], "text": result["reply"], "options": result.get("options", [])})
     storage.save(session)
 
     return {
         "session_id": session["session_id"],
         "stage": session["stage"],
         "stage_label": STAGE_LABEL["hr"],
-        "message": {"speaker": AGENT_DISPLAY["hr"], "text": result["reply"]},
+        "message": {"speaker": AGENT_DISPLAY["hr"], "text": result["reply"], "options": result.get("options", [])},
     }
 
 
@@ -78,7 +78,7 @@ def get_state(session_id: str):
     return session
 
 
-async def _advance_to_next_chat_stage(session: dict, next_stage: str):
+async def _advance_to_next_chat_stage(session: dict, next_stage: str) -> dict | None:
     """Generates the opening question for technical/teamlead stages."""
     if next_stage == "technical":
         result = await technical_agent.take_turn(
@@ -95,8 +95,9 @@ async def _advance_to_next_chat_stage(session: dict, next_stage: str):
     else:
         return None
 
-    session["chat"][next_stage].append({"role": "agent", "speaker": AGENT_DISPLAY[next_stage], "text": result["reply"]})
-    return result["reply"]
+    message = {"speaker": AGENT_DISPLAY[next_stage], "text": result["reply"], "options": result.get("options", [])}
+    session["chat"][next_stage].append({"role": "agent", **message})
+    return message
 
 
 @router.post("/message")
@@ -127,11 +128,11 @@ async def send_message(session_id: str = Form(...), message: str = Form(...)):
             session["candidate_name"], session["jd_text"], session["cv_text"], coding_summary, history[:-1], message
         )
 
-    history.append({"role": "agent", "speaker": AGENT_DISPLAY[stage], "text": result["reply"]})
+    history.append({"role": "agent", "speaker": AGENT_DISPLAY[stage], "text": result["reply"], "options": result.get("options", [])})
 
     response_payload = {
         "stage": stage,
-        "message": {"speaker": AGENT_DISPLAY[stage], "text": result["reply"]},
+        "message": {"speaker": AGENT_DISPLAY[stage], "text": result["reply"], "options": result.get("options", [])},
         "stage_complete": result["stage_complete"],
         "next_stage": None,
         "next_message": None,
@@ -151,8 +152,8 @@ async def send_message(session_id: str = Form(...), message: str = Form(...)):
         response_payload["next_stage"] = next_stage
 
         if next_stage in ("technical", "teamlead"):
-            next_msg = await _advance_to_next_chat_stage(session, next_stage)
-            response_payload["next_message"] = {"speaker": AGENT_DISPLAY[next_stage], "text": next_msg}
+            next_message = await _advance_to_next_chat_stage(session, next_stage)
+            response_payload["next_message"] = next_message
 
     storage.save(session)
     return response_payload

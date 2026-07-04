@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .config import settings
-from .routers import jobs, interview, coding, tts
+from .routers import jobs, interview, coding, speech
 from .services.openrouter_client import OpenRouterError
 
 logger = logging.getLogger("ai_interview_panel")
@@ -36,7 +36,7 @@ app.add_middleware(
 app.include_router(jobs.router)
 app.include_router(interview.router)
 app.include_router(coding.router)
-app.include_router(tts.router)
+app.include_router(speech.router)
 
 
 @app.get("/")
@@ -50,6 +50,6 @@ def health():
         "status": "ok",
         "openrouter_configured": bool(settings.openrouter_api_key),
         "model": settings.openrouter_model,
-        "huggingface_tts_configured": bool(settings.huggingface_api_key),
-        "elevenlabs_configured": bool(settings.elevenlabs_api_key),
+        "groq_configured": bool(settings.groq_api_key),
+        "whisper_model": settings.groq_whisper_model,
     }

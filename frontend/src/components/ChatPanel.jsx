@@ -50,6 +50,29 @@ export default function ChatPanel({ messages, onSend, disabled, isThinking, cand
             }}>
               {m.text}
             </div>
+
+            {m.role === 'agent' && m.options?.length > 0 && i === messages.length - 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                {m.options.map((opt, oi) => (
+                  <button
+                    key={oi}
+                    disabled={disabled}
+                    onClick={() => onSend(opt)}
+                    style={{
+                      textAlign: 'left', padding: '10px 14px', borderRadius: 8,
+                      background: 'var(--surface)', border: '1px solid var(--border-light)',
+                      color: 'var(--text-primary)', fontSize: 14, cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.5 : 1, transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { if (!disabled) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-dim)' } }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-light)'; e.currentTarget.style.background = 'var(--surface)' }}
+                  >
+                    <span className="mono" style={{ color: 'var(--accent)', marginRight: 8 }}>{String.fromCharCode(65 + oi)}</span>
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ))}
 

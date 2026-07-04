@@ -8,12 +8,13 @@ export default function VideoCallPanel({
   agentRole,
   isAgentSpeaking,
   isListening,
-  interimText,
+  isTranscribing,
   micSupported,
   sessionActive,
   onBeginVoice,
   onMuteToggle,
   hint,
+  activityLog,
 }) {
   const { videoRef, status } = useCamera(true)
 
@@ -44,7 +45,7 @@ export default function VideoCallPanel({
           ))}
         </div>
         <div style={{ fontSize: 11.5, color: isAgentSpeaking ? 'var(--accent)' : isListening ? 'var(--negative)' : 'var(--text-faint)', marginTop: 10 }}>
-          {isAgentSpeaking ? 'Speaking…' : isListening ? 'Listening to you…' : sessionActive ? 'Muted' : 'Voice not started'}
+          {isAgentSpeaking ? 'Speaking…' : isListening ? 'Listening to you…' : sessionActive ? 'Mic muted' : 'Panel will speak — mic not enabled yet'}
         </div>
       </div>
 
@@ -76,15 +77,19 @@ export default function VideoCallPanel({
               background: 'rgba(248,113,113,0.15)', border: '1px solid var(--negative)', borderRadius: 20, padding: '4px 10px',
             }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--negative)', animation: 'pulse-ring 1.5s infinite' }} />
-              <span style={{ fontSize: 11, color: 'var(--negative)' }}>LISTENING</span>
+              <span style={{ fontSize: 11, color: 'var(--negative)' }}>RECORDING</span>
             </div>
           )}
         </div>
 
         <div style={{ minHeight: 18, marginTop: 8 }}>
-          {interimText && (
-            <div className="mono" style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-              "{interimText}"
+          {isTranscribing && (
+            <div className="mono" style={{ fontSize: 12, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
+                animation: 'glow-pulse 0.8s infinite',
+              }} />
+              Transcribing with Whisper…
             </div>
           )}
         </div>
@@ -96,7 +101,7 @@ export default function VideoCallPanel({
             disabled={!micSupported}
             style={{ width: '100%', marginTop: 8, padding: '11px 0', fontSize: 13.5 }}
           >
-            🎤 Start Voice Interview
+            🎤 Enable Mic to Speak Your Answers
           </button>
         ) : (
           <button
@@ -109,13 +114,13 @@ export default function VideoCallPanel({
               color: isListening ? 'var(--negative)' : undefined,
             }}
           >
-            {isListening ? '🔇 Mute' : '🎤 Unmute'}
+            {isListening ? '● Stop & Send Now' : '🎤 Speak Now'}
           </button>
         )}
 
         {!micSupported && (
           <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
-            Voice needs Chrome or Edge. You can still type your answer below.
+            Voice needs microphone + recording support (most modern browsers). You can still type your answer below.
           </div>
         )}
         {micSupported && hint && (
@@ -125,15 +130,28 @@ export default function VideoCallPanel({
         )}
         {micSupported && !hint && !sessionActive && (
           <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
-            One click starts the mic for the whole interview — no need to press it again between questions.
+            The panel talks out loud either way. Click once to also answer by voice instead of typing.
+            <br />🎧 Headphones recommended — without them the mic can pick up the panel's own voice from your speakers.
           </div>
         )}
         {micSupported && !hint && sessionActive && (
           <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
-            The mic stays on for the whole interview — it just listens when it's your turn.
+            Your answer is transcribed by Whisper right after you stop talking — a beat slower than
+            live captions, but far more accurate.
           </div>
         )}
       </div>
+
+      {sessionActive && activityLog?.length > 0 && (
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            Voice activity
+          </div>
+          <div className="mono scrollbar-thin" style={{ fontSize: 10.5, color: 'var(--text-muted)', maxHeight: 130, overflowY: 'auto', lineHeight: 1.6 }}>
+            {activityLog.map((line, i) => <div key={i}>{line}</div>)}
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes wave-bar {

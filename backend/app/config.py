@@ -28,17 +28,9 @@ class Settings:
     # so it survives that failure mode entirely. Leave blank to skip it.
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    groq_whisper_model: str = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
     judge0_url: str = os.getenv("JUDGE0_URL", "https://ce.judge0.com")
     frontend_origin: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
-
-    # Primary free voice provider
-    huggingface_api_key: str = os.getenv("HUGGINGFACE_API_KEY", "")
-    huggingface_tts_model: str = os.getenv("HUGGINGFACE_TTS_MODEL", "facebook/mms-tts-eng")
-
-    # Optional legacy/advanced voice provider (needs a paid ElevenLabs plan
-    # to use library voices via the API - not required, HF is free)
-    elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
-    elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_flash_v2_5")
 
 
 settings = Settings()

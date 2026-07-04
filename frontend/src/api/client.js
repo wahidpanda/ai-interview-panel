@@ -48,20 +48,20 @@ export const executeCode = (sessionId, language, code, stdin = '') => {
   return api.post('/api/coding/execute', form).then(r => r.data)
 }
 
-export const submitCode = (sessionId, language, code, tabSwitches = 0) => {
+export const submitCode = (sessionId, language, code, tabSwitches = 0, fullscreenExits = 0) => {
   const form = new FormData()
   form.append('session_id', sessionId)
   form.append('language', language)
   form.append('code', code)
   form.append('tab_switches', tabSwitches)
+  form.append('fullscreen_exits', fullscreenExits)
   return api.post('/api/coding/submit', form).then(r => r.data)
 }
 
 export const getHealth = () => api.get('/api/health').then(r => r.data)
 
-export const fetchSpeechAudio = (stage, text) => {
+export const transcribeAudio = (blob) => {
   const form = new FormData()
-  form.append('stage', stage)
-  form.append('text', text)
-  return api.post('/api/tts', form, { responseType: 'blob' }).then(r => r.data)
+  form.append('audio', blob, 'recording.webm')
+  return api.post('/api/speech/transcribe', form).then(r => r.data.text)
 }

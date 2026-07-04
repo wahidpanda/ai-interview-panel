@@ -117,7 +117,8 @@ async def submit_code(
         session["candidate_name"], session["jd_text"], session["cv_text"], coding_summary, [], None
     )
     from .interview import AGENT_DISPLAY
-    session["chat"]["teamlead"].append({"role": "agent", "speaker": AGENT_DISPLAY["teamlead"], "text": tl_result["reply"]})
+    next_message = {"speaker": AGENT_DISPLAY["teamlead"], "text": tl_result["reply"], "options": tl_result.get("options", [])}
+    session["chat"]["teamlead"].append({"role": "agent", **next_message})
 
     storage.save(session)
 
@@ -127,5 +128,5 @@ async def submit_code(
         "score": score,
         "test_results": test_results,
         "next_stage": "teamlead",
-        "next_message": {"speaker": AGENT_DISPLAY["teamlead"], "text": tl_result["reply"]},
+        "next_message": next_message,
     }

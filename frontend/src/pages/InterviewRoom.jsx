@@ -13,6 +13,15 @@ const STAGE_AGENT = {
   teamlead: { name: 'Mark Rodriguez', role: 'Team Lead' },
 }
 
+// When a question has multiple-choice options, read them aloud too - the
+// buttons in the chat cover a mouse/keyboard candidate, but a voice-only
+// candidate needs to actually hear the choices to answer by speaking.
+function spokenTextFor(message) {
+  if (!message.options?.length) return message.text
+  const spokenOptions = message.options.map((opt, i) => `${String.fromCharCode(65 + i)}: ${opt}`).join('. ')
+  return `${message.text} Your options are — ${spokenOptions}.`
+}
+
 export default function InterviewRoom() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
@@ -64,7 +73,7 @@ export default function InterviewRoom() {
 
       // Speak this reply immediately, right here, the moment it arrives -
       // no separate effect trying to infer "a new message showed up".
-      await voiceRef.current.speakThenListen(res.message.text, stageAtSend)
+      await voiceRef.current.speakThenListen(spokenTextFor(res.message), stageAtSend)
 
       if (res.stage_complete) {
         const freshState = await getState(sessionId)
@@ -83,7 +92,7 @@ export default function InterviewRoom() {
         }
         if (res.next_message) {
           setMessages([res.next_message])
-          await voiceRef.current.speakThenListen(res.next_message.text, res.next_stage)
+          await voiceRef.current.speakThenListen(spokenTextFor(res.next_message), res.next_stage)
         }
       }
     } catch (err) {
@@ -102,7 +111,7 @@ export default function InterviewRoom() {
     voice.begin()
     const last = messages[messages.length - 1]
     if (last && last.role === 'agent' && session) {
-      voice.speakThenListen(last.text, session.stage)
+      voice.speakThenListen(spokenTextFor(last), session.stage)
     }
   }
 
@@ -141,7 +150,7 @@ export default function InterviewRoom() {
           agentRole={agent.role}
           isAgentSpeaking={voice.isSpeaking}
           isListening={voice.isListening}
-          interimText={voice.interimText}
+          isTranscribing={voice.isTranscribing}
           micSupported={voice.supported}
           sessionActive={voice.sessionActive}
           onBeginVoice={handleBeginVoice}
@@ -168,10 +177,14 @@ export default function InterviewRoom() {
           <ChatPanel
             messages={messages}
             onSend={handleSend}
-            disabled={isThinking}
+            disabled={isThinking || voice.isTranscribing}
             isThinking={isThinking}
             candidateName={session.candidate_name}
-            placeholder={voice.isListening ? 'Listening… speak your answer, or type here instead' : undefined}
+            placeholder={
+              voice.isListening ? 'Recording… speak your answer, or type here instead'
+                : voice.isTranscribing ? 'Transcribing your answer…'
+                : undefined
+            }
           />
         </div>
       </div>

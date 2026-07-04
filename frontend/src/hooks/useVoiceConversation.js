@@ -1,156 +1,209 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { transcribeAudio } from '../api/client.js'
 
-const SpeechRecognitionAPI =
-  typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
 const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
-
-const SILENCE_TIMEOUT_MS = 4800
 const STAGE_VOICE = {
   hr: { pitch: 1.15, rate: 1.0 },
   technical: { pitch: 1.05, rate: 1.02 },
   teamlead: { pitch: 0.82, rate: 0.96 },
 }
 
+const SILENCE_MS = 2200               // stop recording after this much quiet, once you've started talking
+const MAX_WAIT_FOR_SPEECH_MS = 20000  // give up if nothing is said at all
+const MAX_RECORDING_MS = 60000        // hard safety cap
+const SILENCE_RMS_THRESHOLD = 0.02    // volume level below which audio counts as "quiet"
+
 /**
- * One continuous voice session for the whole interview, instead of
- * restarting the mic every turn. `begin()` is called exactly once, from a
- * real click - that's the only user gesture the browser ever needs. After
- * that, the mic is muted while the agent talks and unmuted while it's the
- * candidate's turn, entirely in software - the underlying recognition
- * engine itself just keeps running, so there's no repeated start() call
- * that could get silently blocked.
+ * Records the candidate's answer with MediaRecorder and transcribes it via
+ * Groq's free Whisper API - far more accurate and broadly-supported than
+ * the browser's built-in SpeechRecognition (which only works reliably in
+ * Chrome/Edge, depends on Google's cloud service being reachable, and has
+ * been the main source of dropped/garbled answers in this app).
+ *
+ * One click (begin()) grants mic access for the whole interview, same as
+ * before - after that everything runs on the one persistent audio stream,
+ * no repeated permission prompts.
  */
 export function useVoiceConversation({ onAnswer }) {
-  const recognitionRef = useRef(null)
+  const streamRef = useRef(null)
+  const audioCtxRef = useRef(null)
+  const analyserRef = useRef(null)
+  const recorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const rafRef = useRef(null)
   const sessionActiveRef = useRef(false)
-  const mutedRef = useRef(true)
-  const transcriptRef = useRef('')
-  const interimRef = useRef('')
-  const silenceTimerRef = useRef(null)
+  const recordingRef = useRef(false)
   const onAnswerRef = useRef(onAnswer)
   useEffect(() => { onAnswerRef.current = onAnswer }, [onAnswer])
 
   const [sessionActive, setSessionActive] = useState(false)
-  const [isListening, setIsListening] = useState(false) // unmuted & actively capturing
+  const [isListening, setIsListening] = useState(false)   // actively recording the candidate
+  const [isTranscribing, setIsTranscribing] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [interimText, setInterimText] = useState('')
   const [error, setError] = useState(null)
   const [log, setLog] = useState([])
-  const supported = !!SpeechRecognitionAPI
+
+  const supported = typeof window !== 'undefined'
+    && !!navigator.mediaDevices?.getUserMedia
+    && typeof window.MediaRecorder !== 'undefined'
 
   const pushLog = useCallback((msg) => {
     const time = new Date().toLocaleTimeString([], { hour12: false })
     setLog(prev => [...prev.slice(-9), `${time}  ${msg}`])
   }, [])
 
-  const clearSilenceTimer = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current)
-      silenceTimerRef.current = null
+  const stopSilenceWatch = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
     }
   }
 
-  const armSilenceTimer = useCallback(() => {
-    clearSilenceTimer()
-    silenceTimerRef.current = setTimeout(() => {
-      const finalText = (transcriptRef.current || interimRef.current || '').trim()
-      transcriptRef.current = ''
-      interimRef.current = ''
-      setInterimText('')
-      if (finalText) {
-        mutedRef.current = true
-        setIsListening(false)
-        pushLog(`✅ captured: "${finalText.slice(0, 60)}${finalText.length > 60 ? '…' : ''}"`)
-        onAnswerRef.current?.(finalText)
-      } else {
-        pushLog('⚠ silence timeout fired but nothing was captured')
+  // ---------- Recording (candidate's turn) ----------
+
+  const stopRecording = useCallback(() => {
+    stopSilenceWatch()
+    if (recordingRef.current && recorderRef.current?.state !== 'inactive') {
+      try { recorderRef.current.stop() } catch { /* already stopped */ }
+    }
+    recordingRef.current = false
+    setIsListening(false)
+  }, [])
+
+  const startRecording = useCallback(() => {
+    if (!sessionActiveRef.current || !streamRef.current || recordingRef.current) return
+
+    const recorder = new MediaRecorder(streamRef.current)
+    chunksRef.current = []
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+      if (blob.size < 800) {
+        pushLog('⚠ no audio captured — click "Speak Now" or type your answer')
+        return
       }
-    }, SILENCE_TIMEOUT_MS)
+      setIsTranscribing(true)
+      pushLog('📤 transcribing your answer (Whisper)…')
+      try {
+        const text = await transcribeAudio(blob)
+        if (text) {
+          pushLog(`✅ heard: "${text.slice(0, 60)}${text.length > 60 ? '…' : ''}"`)
+          onAnswerRef.current?.(text)
+        } else {
+          pushLog('⚠ got an empty transcription — try again or type your answer')
+        }
+      } catch (err) {
+        const detail = err?.response?.data?.detail || err.message
+        pushLog(`✗ transcription failed: ${detail}`)
+        setError('transcription-failed')
+      } finally {
+        setIsTranscribing(false)
+      }
+    }
+
+    recorder.start()
+    recorderRef.current = recorder
+    recordingRef.current = true
+    setIsListening(true)
+    pushLog('🎤 recording your answer…')
+    watchForSilence()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushLog])
 
-  // Create the recognition engine once and keep it alive for the whole
-  // session, restarting it automatically if the browser cuts it off on
-  // its own (common after long continuous listening / network hiccups).
-  useEffect(() => {
-    if (!supported) return
-    const recognition = new SpeechRecognitionAPI()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
+  const watchForSilence = () => {
+    const analyser = analyserRef.current
+    if (!analyser) return
+    const data = new Uint8Array(analyser.fftSize)
+    const startedAt = Date.now()
+    let hasSpoken = false
+    let silenceSince = null
 
-    recognition.onresult = (event) => {
-      if (mutedRef.current) return // agent's turn - ignore any stray audio
-      let finalChunk = ''
-      let interim = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const chunk = event.results[i][0].transcript
-        if (event.results[i].isFinal) finalChunk += chunk
-        else interim += chunk
+    const tick = () => {
+      if (!recordingRef.current) return
+      analyser.getByteTimeDomainData(data)
+
+      let sumSquares = 0
+      for (let i = 0; i < data.length; i++) {
+        const normalized = (data[i] - 128) / 128
+        sumSquares += normalized * normalized
       }
-      if (finalChunk) {
-        transcriptRef.current = (transcriptRef.current ? transcriptRef.current + ' ' : '') + finalChunk.trim()
-        interimRef.current = ''
-      } else if (interim) {
-        interimRef.current = interim
+      const rms = Math.sqrt(sumSquares / data.length)
+      const now = Date.now()
+
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        hasSpoken = true
+        silenceSince = null
+      } else if (hasSpoken) {
+        if (silenceSince === null) silenceSince = now
+        else if (now - silenceSince > SILENCE_MS) {
+          stopRecording()
+          return
+        }
       }
-      if (finalChunk || interim) {
-        // Show the FULL running answer so far (captured + in-progress), not
-        // just the latest fragment - otherwise the caption looks stale or
-        // wrong mid-sentence, and there's no way to see what's actually
-        // been captured cumulatively.
-        setInterimText((transcriptRef.current + ' ' + interimRef.current).trim())
-        setError(null)
-        armSilenceTimer()
+
+      if (!hasSpoken && now - startedAt > MAX_WAIT_FOR_SPEECH_MS) {
+        pushLog('⚠ no speech detected — click "Speak Now" and try again, or type your answer')
+        stopRecording()
+        return
       }
+      if (now - startedAt > MAX_RECORDING_MS) {
+        stopRecording()
+        return
+      }
+
+      rafRef.current = requestAnimationFrame(tick)
     }
+    rafRef.current = requestAnimationFrame(tick)
+  }
 
-    recognition.onerror = (event) => {
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
-        setError(event.error)
-        pushLog(`✗ mic error: ${event.error}`)
-      }
+  // ---------- Session lifecycle ----------
+
+  /** Call once, from a real click, to grant mic access for the whole interview. */
+  const begin = useCallback(async () => {
+    if (sessionActiveRef.current) return
+    if (!supported) {
+      setError('unsupported')
+      pushLog('✗ this browser does not support audio recording')
+      return
     }
-
-    recognition.onend = () => {
-      // If we didn't deliberately end the session, the browser stopped it
-      // on its own - restart immediately so the conversation keeps flowing
-      // without the candidate needing to click anything.
-      if (sessionActiveRef.current) {
-        pushLog('↻ mic engine stopped itself, restarting…')
-        try { recognition.start() } catch { pushLog('✗ mic restart failed') }
-      }
-    }
-
-    recognitionRef.current = recognition
-    return () => {
-      sessionActiveRef.current = false
-      clearSilenceTimer()
-      try { recognition.stop() } catch { /* noop */ }
-    }
-  }, [supported, armSilenceTimer, pushLog])
-
-  /** Call once, from a real click, to turn the mic on for the whole interview. */
-  const begin = useCallback(() => {
-    if (!recognitionRef.current || sessionActiveRef.current) return
-    sessionActiveRef.current = true
-    setSessionActive(true)
-    mutedRef.current = true // starts muted; caller unmutes after speaking the first question
-    pushLog('🎙 voice session started')
     try {
-      recognitionRef.current.start()
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext
+      const audioCtx = new AudioCtx()
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 512
+      source.connect(analyser)
+      audioCtxRef.current = audioCtx
+      analyserRef.current = analyser
+
+      sessionActiveRef.current = true
+      setSessionActive(true)
+      setError(null)
+      pushLog('🎙 voice session started — transcribing via Groq Whisper')
     } catch {
-      pushLog('✗ mic engine failed to start')
+      setError('mic-denied')
+      pushLog('✗ microphone access was denied or unavailable')
     }
-  }, [pushLog])
+  }, [supported, pushLog])
 
   const endSession = useCallback(() => {
     sessionActiveRef.current = false
     setSessionActive(false)
-    mutedRef.current = true
-    setIsListening(false)
-    clearSilenceTimer()
-    try { recognitionRef.current?.stop() } catch { /* noop */ }
-  }, [])
+    stopRecording()
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    audioCtxRef.current?.close().catch(() => {})
+    audioCtxRef.current = null
+    analyserRef.current = null
+    synth?.cancel()
+  }, [stopRecording])
+
+  useEffect(() => () => endSession(), []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------- Speaking (agent's turn) ----------
 
   const voicesRef = useRef([])
   useEffect(() => {
@@ -170,31 +223,17 @@ export function useVoiceConversation({ onAnswer }) {
     return list[hash] || list[0]
   }
 
-  /** Speaks the agent's line, then unmutes the mic to capture the candidate's reply. */
+  /** Speaks the agent's line, then starts recording the candidate's reply. */
   const speakThenListen = useCallback((text, stage) => {
-    mutedRef.current = true
-    setIsListening(false)
-    transcriptRef.current = ''
-    interimRef.current = ''
-    setInterimText('')
-    pushLog(`🔊 speaking (${stage}): "${text.slice(0, 40)}${text.length > 40 ? '…' : ''}"`)
-
     return new Promise((resolve) => {
-      const unmuteAndResolve = () => {
+      const afterSpeaking = () => {
         setIsSpeaking(false)
-        if (sessionActiveRef.current) {
-          mutedRef.current = false
-          setIsListening(true)
-          pushLog('🎤 unmuted, listening for your answer')
-          // Some browsers need the engine actively running to accept audio;
-          // if it stopped for any reason, nudge it back on.
-          try { recognitionRef.current?.start() } catch { /* already running */ }
-        }
+        if (sessionActiveRef.current) startRecording()
         resolve()
       }
 
-      if (!synth) { pushLog('✗ this browser has no speech synthesis at all'); unmuteAndResolve(); return }
-      if (!text) { unmuteAndResolve(); return }
+      if (!synth || !text) { afterSpeaking(); return }
+      synth.cancel()
 
       const speakAttempt = (useVoice) => {
         const utterance = new SpeechSynthesisUtterance(text)
@@ -208,39 +247,21 @@ export function useVoiceConversation({ onAnswer }) {
 
         let started = false
         let done = false
-        const finish = (why) => {
-          if (done) return
-          done = true
-          pushLog(started ? `✓ finished speaking (${why})` : `✗ never actually spoke (${why}) - browser stayed silent`)
-          unmuteAndResolve()
-        }
+        const finish = () => { if (done) return; done = true; afterSpeaking() }
 
         utterance.onstart = () => { started = true; setIsSpeaking(true) }
-        utterance.onend = () => finish('onend')
-        utterance.onerror = () => finish('onerror')
+        utterance.onend = finish
+        utterance.onerror = finish
         synth.speak(utterance)
 
-        // Chrome occasionally swallows speak() silently (a long-standing
-        // bug, worse the more utterances a page has queued over time). If
-        // nothing happened after a beat, try once more with the default
-        // voice before giving up and just moving on.
         setTimeout(() => {
           if (done || started) return
-          if (useVoice) {
-            pushLog('↻ no audio yet, retrying with default voice…')
-            try { synth.cancel() } catch { /* noop */ }
-            speakAttempt(false)
-          } else {
-            finish('retry also silent, giving up')
-          }
-        }, 700)
-
-        setTimeout(() => finish('safety timeout'), Math.max(4500, text.length * 90))
+          if (useVoice) { try { synth.cancel() } catch { /* noop */ } speakAttempt(false) }
+          else finish()
+        }, 900)
+        setTimeout(finish, Math.max(4500, text.length * 90))
       }
 
-      // Only cancel if something is actually in-flight - calling cancel()
-      // when nothing is queued is itself a common trigger for Chrome's
-      // speech engine getting stuck silent for the rest of the session.
       if (synth.speaking || synth.pending) {
         synth.cancel()
         setTimeout(() => speakAttempt(true), 150)
@@ -248,33 +269,24 @@ export function useVoiceConversation({ onAnswer }) {
         speakAttempt(true)
       }
     })
-  }, [pushLog])
+  }, [])
+
+  // ---------- Manual overrides ----------
 
   const muteMic = useCallback(() => {
-    mutedRef.current = true
-    setIsListening(false)
-    transcriptRef.current = ''
-    interimRef.current = ''
-    setInterimText('')
-    clearSilenceTimer()
-  }, [])
+    stopRecording()
+  }, [stopRecording])
 
   const unmuteMic = useCallback(() => {
-    if (!sessionActiveRef.current) return
-    transcriptRef.current = ''
-    interimRef.current = ''
-    setInterimText('')
-    mutedRef.current = false
-    setIsListening(true)
-    try { recognitionRef.current?.start() } catch { /* already running */ }
-  }, [])
+    startRecording()
+  }, [startRecording])
 
   return {
     supported,
     sessionActive,
     isListening,
+    isTranscribing,
     isSpeaking,
-    interimText,
     error,
     log,
     begin,

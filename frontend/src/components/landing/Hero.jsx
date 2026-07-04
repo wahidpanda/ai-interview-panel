@@ -242,22 +242,22 @@ export default function Hero() {
             </div>
 
             <div style={{
-              position: 'absolute', left: -22, bottom: -24, width: 158, zIndex: 2,
+              position: 'absolute', right: -8, bottom: 'calc(100% + 14px)', width: 150, zIndex: 2,
               background: 'var(--surface)', borderRadius: 11, border: '1px solid var(--border)',
-              boxShadow: '0 16px 32px -12px rgba(var(--shadow-color), 0.5)', padding: '11px 14px',
-              transform: `perspective(1600px) rotateX(${tilt.x * 0.4}deg) rotateY(${tilt.y * 0.4}deg) rotate(-4deg)`,
+              boxShadow: '0 16px 32px -12px rgba(var(--shadow-color), 0.5)', padding: '10px 13px',
+              transform: `perspective(1600px) rotateX(${tilt.x * 0.4}deg) rotateY(${tilt.y * 0.4}deg) rotate(3deg)`,
               transition: 'transform 0.15s ease-out',
             }}>
-              <div className="mono" style={{ fontSize: 8.5, color: 'var(--text-faint)', letterSpacing: '0.06em', marginBottom: 6 }}>AI VERDICT</div>
+              <div className="mono" style={{ fontSize: 8, color: 'var(--text-faint)', letterSpacing: '0.06em', marginBottom: 5 }}>AI VERDICT</div>
               <div style={{
-                display: 'inline-block', fontSize: 10.5, fontWeight: 600, color: 'var(--positive)',
+                display: 'inline-block', fontSize: 10, fontWeight: 600, color: 'var(--positive)',
                 background: 'var(--positive-dim)', border: '1px solid var(--positive)',
-                borderRadius: 20, padding: '2px 8px', marginBottom: 8,
+                borderRadius: 20, padding: '2px 7px', marginBottom: 7,
               }}>
                 Strong Hire
               </div>
-              <div className="mono" style={{ fontSize: 21, fontWeight: 700, color: 'var(--text-primary)' }}>
-                8.7<span style={{ fontSize: 11, color: 'var(--text-faint)', fontWeight: 400 }}>/10</span>
+              <div className="mono" style={{ fontSize: 19, fontWeight: 700, color: 'var(--text-primary)' }}>
+                8.7<span style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 400 }}>/10</span>
               </div>
             </div>
           </div>

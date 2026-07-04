@@ -9,20 +9,20 @@ const STEPS = [
     stage: 'hr',
     speaker: 'Kylie Jenner · HR Manager',
     text: 'What motivated you to pursue a career in AI/ML, and what draws you to this role?',
-    duration: 3400,
+    duration: 4200,
   },
   {
     key: 'candidate-answer',
     label: 'HR Round',
     kind: 'candidate-speaking',
     text: "I love building systems that actually ship — turning a research idea into something reliable at scale is what got me hooked.",
-    duration: 3200,
+    duration: 4200,
   },
   {
     key: 'coding',
     label: 'Coding Round',
     kind: 'coding',
-    duration: 4200,
+    duration: 4400,
   },
   {
     key: 'verdict',
@@ -31,6 +31,29 @@ const STEPS = [
     duration: 3600,
   },
 ]
+
+/** Reveals text one character at a time, like it's being typed/transcribed live. */
+function Typewriter({ text, speedMs = 22, style }) {
+  const [shown, setShown] = useState('')
+
+  useEffect(() => {
+    setShown('')
+    let i = 0
+    const timer = setInterval(() => {
+      i += 1
+      setShown(text.slice(0, i))
+      if (i >= text.length) clearInterval(timer)
+    }, speedMs)
+    return () => clearInterval(timer)
+  }, [text, speedMs])
+
+  return (
+    <p style={style}>
+      "{shown}
+      {shown.length < text.length && <span className="mono" style={{ opacity: 0.6 }}>▍</span>}"
+    </p>
+  )
+}
 
 export default function DemoSimulation() {
   const [stepIndex, setStepIndex] = useState(0)
@@ -94,9 +117,10 @@ export default function DemoSimulation() {
                 }} />
               ))}
             </div>
-            <p style={{ fontSize: 15, color: 'var(--text-primary)', lineHeight: 1.5, padding: '0 12px' }}>
-              "{step.text}"
-            </p>
+            <Typewriter
+              text={step.text}
+              style={{ fontSize: 15, color: 'var(--text-primary)', lineHeight: 1.5, padding: '0 12px', minHeight: 48 }}
+            />
           </div>
         )}
 
@@ -113,9 +137,11 @@ export default function DemoSimulation() {
             <div className="mono" style={{ fontSize: 11, color: 'var(--negative)', marginBottom: 10, letterSpacing: '0.04em' }}>
               ● LISTENING — CANDIDATE
             </div>
-            <p style={{ fontSize: 15, color: 'var(--text-primary)', lineHeight: 1.5, padding: '0 12px', fontStyle: 'italic' }}>
-              "{step.text}"
-            </p>
+            <Typewriter
+              text={step.text}
+              speedMs={18}
+              style={{ fontSize: 15, color: 'var(--text-primary)', lineHeight: 1.5, padding: '0 12px', fontStyle: 'italic', minHeight: 48 }}
+            />
           </div>
         )}
 
@@ -150,9 +176,10 @@ function CodingStep() {
         if (v >= lines.length) { clearInterval(lineTimer); return v }
         return v + 1
       })
-    }, 180)
-    const resultTimer = setTimeout(() => setShowResults(true), 2200)
+    }, 200)
+    const resultTimer = setTimeout(() => setShowResults(true), 2400)
     return () => { clearInterval(lineTimer); clearTimeout(resultTimer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
@@ -165,6 +192,7 @@ function CodingStep() {
         {lines.slice(0, visibleLines).map((line, i) => (
           <div key={i} style={{ color: 'var(--text-primary)', whiteSpace: 'pre', opacity: 0, animation: 'fade-in-up 0.2s ease forwards' }}>
             {line}
+            {i === visibleLines - 1 && <span style={{ opacity: 0.6 }}>▍</span>}
           </div>
         ))}
       </div>

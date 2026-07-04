@@ -1,59 +1,92 @@
 # AI Interview Panel
 
-A full-stack, **100% free-to-run** multi-agent AI interview system.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/backend-FastAPI-009688.svg)
+![React](https://img.shields.io/badge/frontend-React%20%2B%20Vite-61DAFB.svg)
+![Free](https://img.shields.io/badge/cost-%240%20to%20run-brightgreen.svg)
 
-A candidate joins a live video-call-style interview room — camera preview,
-speak-to-answer, and each AI panelist talks back in a distinct voice — and
-moves through four rounds:
+A full-stack, **100% free-to-run** multi-agent AI interview system with a
+real voice-driven video-call interview room — not a chat box.
+
+A candidate clicks one button, and the mic stays live for the whole
+interview: each AI panelist asks a question out loud, listens, auto-detects
+when the candidate stops talking, and moves on — straight through four
+rounds, hands-free:
 
 1. **HR Round** — Kylie Jenner, HR Manager → motivation & culture fit
-2. **Technical Round** — Lisa Chen, Project Manager → probes real project experience from the candidate's CV
-3. **Coding Round** — a live in-browser IDE, auto-graded against hidden test cases, with tab-switch integrity tracking
+2. **Technical Round** — Lisa Chen, Project Manager → probes real project experience from the candidate's CV, mixing in multiple-choice concept checks
+3. **Coding Round** — a live in-browser IDE (Monaco), auto-graded against hidden test cases, with tab-switch/fullscreen-exit integrity tracking
 4. **Final Round** — Mark Rodriguez, Team Lead → vision & team fit
 
 At the end, a **Decision Agent** combines all four scores into a weighted
 overall score and an instant **Hire / No Hire** verdict with a written
 recommendation and an exportable PDF scorecard — no manual review needed.
 
-No paid API keys required: LLM calls run on **OpenRouter's free models**,
-voices use **ElevenLabs' free tier** (auto-falls back to the browser's
-built-in free voice if you skip this or hit the quota), speech-to-text uses
-the browser's free built-in mic recognition, and code execution runs on the
-free public **Piston API**.
+No paid API keys required anywhere in the stack:
+- **LLM** — OpenRouter's free models, with automatic fallback across several
+  free models, plus a Groq backup (a completely separate free quota —
+  OpenRouter's free tier shares one account-wide daily cap, so this
+  survives that failure mode)
+- **Voice** — speech-to-text via Groq's free hosted Whisper API (far more
+  accurate and broadly-supported than a browser's built-in speech
+  recognition), text-to-speech via the browser's free built-in voice
+- **Code execution** — Judge0 CE's free public API, no signup
 
 ---
+
+## Demo flow
+
+```
+Landing page → pick a role, optionally upload a CV
+      ↓
+Interview Room → click "Start Voice Interview" once
+      ↓
+🔊 Kylie asks a question  →  🎤 you answer out loud  →  auto-sends when you pause
+      ↓ (repeats through HR → Technical, some questions multiple-choice)
+Coding Round → live Monaco IDE, run/submit against hidden test cases
+      ↓
+Final Round with Mark  →  repeats the voice loop
+      ↓
+Results → weighted score, Hire/No-Hire verdict, written summary, PDF export
+```
 
 ## Architecture
 
 ```
 ai-interview-system/
-├── backend/                  FastAPI (Python)
+├── backend/                       FastAPI (Python)
 │   ├── app/
-│   │   ├── agents/           One file per persona (hr, technical, teamlead, decision)
-│   │   ├── services/         openrouter_client, piston_client, cv_parser, coding_problems
-│   │   ├── routers/          jobs, interview, coding
-│   │   ├── data/              👉 YOUR CONTENT LIVES HERE
+│   │   ├── agents/                One file per persona: hr, technical, teamlead, decision
+│   │   ├── services/
+│   │   │   ├── openrouter_client.py   LLM calls w/ multi-model + multi-provider fallback
+│   │   │   ├── code_exec_client.py    Judge0 CE code execution
+│   │   │   ├── cv_parser.py           PDF/text CV extraction
+│   │   │   └── coding_problems.py     Built-in coding problem bank
+│   │   ├── routers/               jobs, interview, coding
+│   │   ├── data/                  👉 YOUR CONTENT LIVES HERE
 │   │   │   ├── hr_policies/       drop your HR policy .md/.txt files here
 │   │   │   ├── job_descriptions/  drop your job description .md/.txt files here
 │   │   │   └── candidate_cvs/     dummy CV + uploaded CVs are saved here
-│   │   ├── storage.py         simple JSON-file session store (no DB setup needed)
+│   │   ├── storage.py             simple JSON-file session store (no DB setup needed)
 │   │   └── main.py
 │   ├── requirements.txt
 │   └── .env.example
-└── frontend/                 React + Vite
+└── frontend/                      React + Vite
     └── src/
-        ├── pages/             Landing, InterviewRoom, CodingRound, Results
-        ├── components/        PanelRail, ChatPanel, ScoreCard
+        ├── pages/                 Landing, InterviewRoom, CodingRound, Results
+        ├── components/            PanelRail, ChatPanel, VideoCallPanel, AgentAvatar, ScoreCard
+        ├── hooks/                 useVoiceConversation, useCamera
         └── api/client.js
 ```
 
 ## How scoring works
 
-- Each conversational agent (HR / Technical / Team Lead) asks 2-4 questions,
-  then returns a structured JSON score (0-10) with strengths/concerns —
-  enforced via a strict response contract in `agents/base_agent.py`.
-- The Coding round is graded **deterministically**: your code runs against
-  a bank of hidden test cases via Piston, and the score is `(tests passed / total) × 10`.
+- Each conversational agent (HR / Technical / Team Lead) asks 2-4 questions
+  (some multiple-choice), then returns a structured JSON score (0-10) with
+  strengths/concerns — enforced via a strict response contract in
+  `agents/base_agent.py`.
+- The Coding round is graded **deterministically**: code runs against a bank
+  of hidden test cases via Judge0, and the score is `(tests passed / total) × 10`.
 - The **Decision Agent** does NOT ask an LLM for the final verdict (keeps
   hiring decisions auditable) — it computes a weighted average
   (HR 15%, Technical 30%, Coding 35%, Team Lead 20%) and maps it to a verdict:
@@ -62,23 +95,30 @@ ai-interview-system/
   - ≥ 5.0 → Borderline — Further Review
   - < 5.0 → No Hire
 
-  The LLM is only used to *write* a short human-readable summary of that verdict.
-  Tune the weights/thresholds in `backend/app/agents/decision_agent.py`.
+  The LLM is only used to *write* a short human-readable summary of that
+  verdict. Tune the weights/thresholds in `backend/app/agents/decision_agent.py`.
 
 ---
 
 ## Setup
 
 ### 1. Get a free OpenRouter API key
-Go to **https://openrouter.ai/keys**, sign up (no credit card), and create a key.
-By default this project uses `openrouter/free`, OpenRouter's auto-router —
-it always picks a currently-available free model for you, so it won't break
-when individual free models get renamed or deprecated (which happens often).
-If you want a specific model instead, browse the free list at
-https://openrouter.ai/models?max_price=0, copy its exact slug (must end in
-`:free`), and set `OPENROUTER_MODEL` in `.env` to that value.
+Go to **https://openrouter.ai/keys**, sign up (no credit card), and create a
+key. The default model chain tries several current free models in order,
+falling back automatically if one is rate-limited — see `OPENROUTER_MODEL`
+in `.env.example` to pin a specific one instead.
 
-### 2. Backend
+### 2. Get a free Groq API key (needed for voice, and as an LLM backup)
+Groq (**https://console.groq.com/keys**, free, ~30 seconds, no card) does
+two jobs here: it transcribes candidate voice answers via Groq's free
+hosted Whisper API (far more accurate than a browser's built-in speech
+recognition), and it's a completely separate LLM quota from OpenRouter —
+OpenRouter's free tier shares **one account-wide daily cap** across every
+free model, so once that's hit, every OpenRouter model fails at once no
+matter which you pick, and Groq picks up automatically. Voice input is
+disabled without this key (typing still works fine).
+
+### 3. Backend
 
 ```bash
 cd backend
@@ -87,57 +127,29 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# now edit .env and paste your OPENROUTER_API_KEY
+# edit .env: paste OPENROUTER_API_KEY and GROQ_API_KEY
 
 uvicorn app.main:app --reload --port 8000
 ```
 
 Visit http://localhost:8000/api/health — you should see
-`"openrouter_configured": true`.
+`"openrouter_configured": true` and `"groq_configured": true`.
 
-### 3. Frontend
+### 4. Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env   # only needed if your backend isn't on localhost:8000
 npm run dev
 ```
 
-Visit **http://localhost:5173** — set up a candidate and start the interview.
+Visit **http://localhost:5173**, set up a candidate, and click
+**"🎤 Start Voice Interview"** once — that's the only click needed for the
+whole interview. 🎧 Headphones recommended (without them the mic can pick
+up the panel's own voice from your speakers).
 
-### 4. (Optional) Enable spoken voices
-
-Without this step, agents still talk out loud using your browser's free
-built-in voice — the app works fully with zero extra setup. For a more
-consistent AI-generated voice:
-
-1. Sign up free at **https://huggingface.co** (no credit card).
-2. Go to **https://huggingface.co/settings/tokens** → Create new token →
-   "Read" access is enough.
-3. Paste it into `backend/.env` as `HUGGINGFACE_API_KEY`.
-4. Restart the backend. Check `/api/health` → `"huggingface_tts_configured": true`.
-
-Unlike ElevenLabs, Hugging Face's free tier lets you call TTS models via the
-API with no paid plan required — just rate-limited (a few hundred
-requests/hour, plenty for interviews). The default model
-(`facebook/mms-tts-eng`) is single-voice, so the app nudges playback
-rate/pitch per panelist so the three agents still sound distinct from each
-other.
-
-If you happen to have a **paid** ElevenLabs plan and want more realistic,
-truly distinct voices, you can additionally set `ELEVENLABS_API_KEY` in
-`.env` — it's used as a second option if Hugging Face isn't configured or
-fails. Free ElevenLabs accounts can't call voices via the API anymore, so
-this is optional and only useful if you're on a paid tier.
-
-If every configured provider fails or none are set, the app automatically
-falls back to the browser voice — nothing ever breaks.
-
-**Voice input** (speaking your answers instead of typing) uses the browser's
-free built-in speech recognition — works out of the box in Chrome/Edge, no
-setup needed. Click "🎤 Speak Answer" in the interview room, or just type —
-both work interchangeably at any point.
+Voice needs **Chrome or Edge** — Safari/Firefox have little to no Web
+Speech API support; the app detects this and lets you type instead.
 
 ---
 
@@ -145,25 +157,33 @@ both work interchangeably at any point.
 
 - 🎥 Live video-call-style interview room — candidate camera preview,
   animated illustrated avatars per agent (blinking eyes, talking mouth
-  synced to speech) with a voice waveform
-- 🔁 **Fully hands-free voice loop** — agent asks a question out loud, the
-  mic auto-starts listening right after, auto-detects when you pause and
-  sends your answer, then the next question plays automatically. No button
-  clicking needed turn after turn. Manual "Speak Now / Stop & Send" and
+  synced to speech), voice waveform
+- 🔁 **Fully hands-free voice loop** — one click to start, then the agent
+  asks, listens, auto-detects when you pause, sends, and asks the next
+  question automatically for the whole interview. Manual mute/unmute and
   typing are always available as an override.
-- 🗣️ Each of the 4 panelists talks out loud (Hugging Face free Inference API
-  by default, free browser voice fallback, optional ElevenLabs for paid plans)
+- 🔤 **Multiple-choice questions** in the Technical round — click-to-select
+  buttons that auto-submit, spoken aloud too for voice-only candidates
+- 🎧 Candidate answers are transcribed with Groq's free hosted **Whisper**
+  API — far more accurate than a browser's built-in speech recognition,
+  and works in any browser with a microphone (not just Chrome/Edge)
+- 🗣️ Each panelist talks with a distinct pitch/rate using the browser's
+  free built-in voice — no API key, no network call, nothing that can fail
+  or get paywalled
 - 🤖 4 independent AI agents with real persona prompts, each scoring 0-10
   with strengths/concerns
-- 💻 The coding round is the one deliberately typed step — a real in-browser
-  IDE (Monaco) with actual code execution (Piston, 30+ languages) and hidden
-  test-case auto-grading, exactly like a real take-home/live-coding round
-- 🕵️ Tab-switch / focus-loss integrity tracking during the coding round
+- 💻 A real in-browser coding IDE (Monaco) with actual code execution
+  (Judge0, 60+ languages) and hidden test-case auto-grading
+- 🕵️ Tab-switch and fullscreen-exit integrity tracking during the coding
+  round (honest about what a browser actually can/can't detect — see
+  Troubleshooting)
 - ⚖️ Deterministic, auditable Hire/No-Hire decision engine (not another LLM
   guess) with a written summary
 - 📄 One-click PDF export of the final scorecard
 - 📂 Drop-in folders for your own HR policy, job descriptions, and CVs —
   no code changes needed
+- 🔀 Automatic multi-model + multi-provider LLM fallback (OpenRouter chain
+  → Groq) so one rate-limited model/provider doesn't stall an interview
 - 💸 Runs entirely on free tiers — no credit card required anywhere
 
 ---
@@ -191,52 +211,57 @@ This is designed so you can drop in real content without touching code:
 - **Change personas / names** → edit the `AGENT_NAME` / `AGENT_ROLE` /
   `PERSONA_PROMPT` constants in `backend/app/agents/hr_agent.py`,
   `technical_agent.py`, `teamlead_agent.py`.
-- **Change the free model** → edit `OPENROUTER_MODEL` in `.env`.
+- **Change the LLM model chain** → edit `OPENROUTER_MODEL` in `.env`, or the
+  `FALLBACK_MODELS` list in `backend/app/services/openrouter_client.py`.
 - **Change scoring weights** → edit `WEIGHTS` in `backend/app/agents/decision_agent.py`.
-- **Add more languages to the coding IDE** → add entries to
-  `LANGUAGE_VERSIONS` in `backend/app/services/piston_client.py` (Piston
-  supports 30+ languages — see https://github.com/engineer-man/piston#supported-languages)
-  and add a matching `starter_code` entry per problem.
+- **Add more languages to the coding IDE** → Judge0 supports 60+ languages;
+  add entries to `LANGUAGE_NAME_HINTS` in
+  `backend/app/services/code_exec_client.py` and a matching `starter_code`
+  entry per problem in `coding_problems.py`.
 
 ## Notes on the free tier
 
-- OpenRouter free models are rate-limited (usually ~20 requests/minute,
-  varies by model) — plenty for demos and small-scale real use. If you hit
-  limits, switch `OPENROUTER_MODEL` to another `:free` model.
-- Piston's public instance is shared and free with no key, but is rate-limited
-  and best-effort — for heavy production use, consider self-hosting Piston
-  (it's open-source and Dockerized) or swapping in Judge0.
-- Session data is stored as plain JSON files in `backend/storage/` — good for
-  local use and demos. Swap `app/storage.py` for a real database if you need
+- OpenRouter free models get rate-limited individually and unpredictably —
+  the client automatically tries several models in sequence, then Groq if
+  configured, before giving up. Add `GROQ_API_KEY` in `.env` for real
+  resilience against OpenRouter's account-wide daily cap.
+- Judge0 CE's public instance is shared, free, and rate-limited but requires
+  no signup. For heavy use, self-host Judge0 (Docker-based, see
+  https://github.com/judge0/judge0).
+- Session data is stored as plain JSON files in `backend/storage/` — good
+  for local use and demos. Swap `app/storage.py` for a real database for
   concurrent multi-user production use.
 
 ## Troubleshooting
 
-**Mic doesn't send after I talk / only the first question works.**
-Browsers require a real click before they'll grant microphone access for
-speech recognition. The very first time the panel tries to auto-start
-listening (right after it finishes asking a question), it may be blocked
-silently — you'll see a small warning under the mic button asking you to
-click **"🎤 Speak Now"** once. After that one click grants permission, the
-rest of the interview listens automatically with no further clicks needed.
-If you still don't get sent after talking, check the on-screen hint under
-the camera — it'll say exactly what went wrong (permission blocked, no
-mic found, network issue, etc.) instead of failing silently.
+**Voice input doesn't work at all / "GROQ_API_KEY is not set" error.**
+Speech-to-text needs a free Groq key (see setup step 2 above) — without
+it, voice input is disabled but typing still works fine. Add
+`GROQ_API_KEY` to `backend/.env` and restart the backend.
 
-**`POST /api/tts` returns 502 Bad Gateway.**
-This means all configured voice providers failed — the app automatically
-falls back to your browser's free voice, so the interview still works, but
-to fix voices themselves: check your backend terminal, it now logs the
-exact reason (invalid token, rate-limited, model cold-starting, etc.) right
-above the 502 line. Common cause with ElevenLabs specifically: free
-ElevenLabs accounts got blocked from calling voices via the API in 2026
-(`payment_required` / `paid_plan_required`) — that's not fixable via config,
-switch to `HUGGINGFACE_API_KEY` instead, which stays free. You can always
-leave both blank in `.env` to skip remote voices entirely and use the
-browser voice full-time — it works identically, just less polished.
+**My answer didn't get transcribed / took a while.**
+Check the "Voice activity" log under the mic button — it logs every step
+(recording started, sent for transcription, transcribed text, or the
+exact error) so you can see what happened instead of guessing. Whisper
+transcribes *after* you stop talking (not live, word-by-word), so there's
+a brief pause (usually under a second with Groq) before your answer
+appears — that's expected, not a bug.
 
-**Voice input doesn't work at all.**
-Continuous `SpeechRecognition` is only reliably supported in **Chrome and
-Edge** (desktop or Android). Safari and Firefox have little to no support —
-the app detects this and lets you type instead, but real-time voice needs
-one of the supported browsers.
+**The mic transcribes the panel's own question as my answer.**
+That's audio feedback (speakers → mic), not a bug — 🎧 use headphones.
+
+**"All LLM providers unavailable" / 429 errors.**
+Free-tier rate limits. The client already retries and falls through several
+models automatically — if it still fails, add `GROQ_API_KEY` (a separate
+free quota) for real resilience, or wait a bit and retry.
+
+**Tab-switching / proctoring — what it can and can't actually do.**
+No website can literally prevent switching tabs or apps — no browser gives
+JavaScript that power. What's implemented is honest **detection**: tab
+visibility changes and fullscreen exits during the coding round are logged
+and shown in the final integrity report, which is what real proctoring
+tools do under the hood too.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
